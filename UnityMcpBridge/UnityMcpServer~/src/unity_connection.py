@@ -33,7 +33,7 @@ class UnityConnection:
     port: int = None  # Will be set dynamically
     sock: socket.socket = None  # Socket for Unity communication
     use_framing: bool = False  # Negotiated per-connection
-    
+
     def __post_init__(self):
         """Set port from discovery if not explicitly provided"""
         if self.port is None:
@@ -92,7 +92,7 @@ class UnityConnection:
                     self.sock.settimeout(config.connection_timeout)
                 return True
             except Exception as e:
-                logger.error(f"Failed to connect to Unity: {str(e)}")
+                logger.error(f"Failed to connect to Unity: {str(e)}", exc_info=True)
                 try:
                     if self.sock:
                         self.sock.close()
@@ -161,18 +161,18 @@ class UnityConnection:
                         raise Exception("Connection closed before receiving data")
                     break
                 chunks.append(chunk)
-                
+
                 # Process the data received so far
                 data = b''.join(chunks)
                 decoded_data = data.decode('utf-8')
-                
+
                 # Check if we've received a complete response
                 try:
                     # Special case for ping-pong
                     if decoded_data.strip().startswith('{"status":"success","result":{"message":"pong"'):
                         logger.debug("Received ping response")
                         return data
-                    
+
                     # Handle escaped quotes in the content
                     if '"content":' in decoded_data:
                         # Find the content field and its value
@@ -183,10 +183,10 @@ class UnityConnection:
                             content = decoded_data[content_start:content_end]
                             content = content.replace('\\"', '"')
                             decoded_data = decoded_data[:content_start] + content + decoded_data[content_end:]
-                    
+
                     # Validate JSON format
                     json.loads(decoded_data)
-                    
+
                     # If we get here, we have valid JSON
                     logger.info(f"Received complete response ({len(data)} bytes)")
                     return data
@@ -287,19 +287,29 @@ class UnityConnection:
                             last_short_timeout = None
 
                 # Parse
-                if command_type == 'ping':
-                    resp = json.loads(response_data.decode('utf-8'))
-                    if resp.get('status') == 'success' and resp.get('result', {}).get('message') == 'pong':
-                        return {"message": "pong"}
-                    raise Exception("Ping unsuccessful")
+                try:
+                    if command_type == 'ping':
+                        resp = json.loads(response_data.decode('utf-8'))
+                        if resp.get('status') == 'success' and resp.get('result', {}).get('message') == 'pong':
+                            return {"message": "pong"}
+                        raise Exception("Ping unsuccessful")
 
-                resp = json.loads(response_data.decode('utf-8'))
-                if resp.get('status') == 'error':
-                    err = resp.get('error') or resp.get('message', 'Unknown Unity error')
-                    raise Exception(err)
-                return resp.get('result', {})
+                    resp = json.loads(response_data.decode('utf-8'))
+                    if resp.get('status') == 'error':
+                        err = resp.get('error') or resp.get('message', 'Unknown Unity error')
+                        raise Exception(err)
+                    return resp.get('result', {})
+                except json.JSONDecodeError as je:
+                    logger.error(f"JSON decode error: {str(je)}")
+                    # Log partial response for debugging
+                    partial_response = response_data.decode('utf-8')[:500] + "..." if len(response_data) > 500 else response_data.decode('utf-8')
+                    logger.error(f"Raw response preview: {partial_response}")
+                    raise Exception(f"Invalid JSON response from Unity: {str(je)}")
             except Exception as e:
-                logger.warning(f"Unity communication attempt {attempt+1} failed: {e}")
+                if command_type == 'ping':
+                    logger.error(f"Ping error on attempt {attempt+1}: {str(e)}", exc_info=True)
+                else:
+                    logger.warning(f"Unity communication attempt {attempt+1} failed: {e}", exc_info=True)
                 try:
                     if self.sock:
                         self.sock.close()
@@ -362,7 +372,7 @@ def get_unity_connection() -> UnityConnection:
     with _connection_lock:
         if _unity_connection is not None:
             return _unity_connection
-        logger.info("Creating new Unity connection")
+        logger.info(f"Creating new Unity connection (registry={PortDiscovery.get_registry_path()})")
         _unity_connection = UnityConnection()
         if not _unity_connection.connect():
             _unity_connection = None

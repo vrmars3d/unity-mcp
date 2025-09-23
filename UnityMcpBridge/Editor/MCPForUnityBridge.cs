@@ -53,7 +53,7 @@ namespace MCPForUnity.Editor
         private static bool isAutoConnectMode = false;
         private const ulong MaxFrameBytes = 64UL * 1024 * 1024; // 64 MiB hard cap for framed payloads
         private const int FrameIOTimeoutMs = 30000; // Per-read timeout to avoid stalled clients
-        
+
         // IO diagnostics
         private static long _ioSeq = 0;
         private static void IoInfo(string s) { McpLog.Info(s, always: false); }
@@ -63,7 +63,7 @@ namespace MCPForUnity.Editor
         {
             try { return EditorPrefs.GetBool("MCPForUnity.DebugLogs", false); } catch { return false; }
         }
-        
+
         private static void LogBreadcrumb(string stage)
         {
             if (IsDebugEnabled())
@@ -82,21 +82,21 @@ namespace MCPForUnity.Editor
         public static void StartAutoConnect()
         {
             Stop(); // Stop current connection
-            
+
             try
             {
                 // Prefer stored project port and start using the robust Start() path (with retries/options)
                 currentUnityPort = PortManager.GetPortWithFallback();
                 Start();
                 isAutoConnectMode = true;
-                
+
                 // Record telemetry for bridge startup
                 TelemetryHelper.RecordBridgeStartup();
             }
             catch (Exception ex)
             {
                 Debug.LogError($"Auto-connect failed: {ex.Message}");
-                
+
                 // Record telemetry for connection failure
                 TelemetryHelper.RecordBridgeConnection(false, ex.Message);
                 throw;
@@ -379,9 +379,17 @@ namespace MCPForUnity.Editor
 
                     isRunning = true;
                     isAutoConnectMode = false;
+
+                    // Log detailed binding information
+                    var localEndpoint = listener.LocalEndpoint;
+                    var addressFamily = localEndpoint.AddressFamily;
+                    var protocol = addressFamily == AddressFamily.InterNetwork ? "IPv4" :
+                                  addressFamily == AddressFamily.InterNetworkV6 ? "IPv6" :
+                                  addressFamily.ToString();
+
                     string platform = Application.platform.ToString();
                     string serverVer = ReadInstalledServerVersionSafe();
-                    Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: MCPForUnityBridge started on port {currentUnityPort}. (OS={platform}, server={serverVer})");
+                    Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: MCPForUnityBridge started on {protocol} {localEndpoint} (requested port: {currentUnityPort}, OS={platform}, server={serverVer})");
                     // Start background listener with cooperative cancellation
                     cts = new CancellationTokenSource();
                     listenerTask = Task.Run(() => ListenerLoopAsync(cts.Token));
@@ -472,6 +480,7 @@ namespace MCPForUnity.Editor
                 try
                 {
                     TcpClient client = await listener.AcceptTcpClientAsync();
+                    if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: accepted client from {client.Client.RemoteEndPoint}");
                     // Enable basic socket keepalive
                     client.Client.SetSocketOption(
                         SocketOptionLevel.Socket,
@@ -571,12 +580,14 @@ namespace MCPForUnity.Editor
                         // Special handling for ping command to avoid JSON parsing
                         if (commandText.Trim() == "ping")
                         {
+                            if (IsDebugEnabled()) Debug.Log("<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: received ping");
                             // Direct response to ping without going through JSON parsing
                             byte[] pingResponseBytes = System.Text.Encoding.UTF8.GetBytes(
                                 /*lang=json,strict*/
                                 "{\"status\":\"success\",\"result\":{\"message\":\"pong\"}}"
                             );
                             await WriteFrameAsync(stream, pingResponseBytes);
+                            if (IsDebugEnabled()) Debug.Log("<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: responded to ping");
                             continue;
                         }
 
@@ -709,6 +720,7 @@ namespace MCPForUnity.Editor
 #else
                     int read = await stream.ReadAsync(buffer, offset, remaining, cts.Token).ConfigureAwait(false);
 #endif
+                    if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: read {read} bytes");
                     if (read == 0)
                     {
                         throw new System.IO.IOException("Connection closed before reading expected bytes");
@@ -1205,6 +1217,38 @@ namespace MCPForUnity.Editor
             {
                 return "default";
             }
+        }
+
+        // Unity Editor Menu Items for diagnostics
+        [MenuItem("Tools/MCP for Unity/Show Port")]
+        public static void MenuShowPort()
+        {
+            if (isRunning && listener != null)
+            {
+                var localEndpoint = listener.LocalEndpoint;
+                var addressFamily = localEndpoint.AddressFamily;
+                var protocol = addressFamily == AddressFamily.InterNetwork ? "IPv4" :
+                              addressFamily == AddressFamily.InterNetworkV6 ? "IPv6" :
+                              addressFamily.ToString();
+                Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: running={isRunning}, autoMode={isAutoConnectMode}, bound to {protocol} {localEndpoint}");
+            }
+            else
+            {
+                Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: running={isRunning}, autoMode={isAutoConnectMode}, port={currentUnityPort} (not bound)");
+            }
+        }
+
+        [MenuItem("Tools/MCP for Unity/Start Auto-Connect")]
+        public static void MenuAutoConnect()
+        {
+            StartAutoConnect();
+        }
+
+        [MenuItem("Tools/MCP for Unity/Restart")]
+        public static void MenuRestart()
+        {
+            Stop();
+            Start();
         }
     }
 }

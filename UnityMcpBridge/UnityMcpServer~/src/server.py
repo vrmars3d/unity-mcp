@@ -68,7 +68,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     """Handle server startup and shutdown."""
     global _unity_connection
     logger.info("MCP for Unity Server starting up")
-    
+
     # Record server startup telemetry
     start_time = time.time()
     start_clk = time.perf_counter()
@@ -90,7 +90,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         except Exception:
             logger.debug("Deferred startup telemetry failed", exc_info=True)
     threading.Timer(1.0, _emit_startup).start()
-    
+
     try:
         skip_connect = os.environ.get("UNITY_MCP_SKIP_STARTUP_CONNECT", "").lower() in ("1", "true", "yes", "on")
         if skip_connect:
@@ -98,7 +98,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         else:
             _unity_connection = get_unity_connection()
             logger.info("Connected to Unity on startup")
-            
+
             # Record successful Unity connection (deferred)
             import threading as _t
             _t.Timer(1.0, lambda: record_telemetry(
@@ -108,11 +108,11 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
                     "connection_time_ms": (time.perf_counter() - start_clk) * 1000,
                 }
             )).start()
-            
+
     except ConnectionError as e:
-        logger.warning("Could not connect to Unity on startup: %s", e)
+        logger.warning("Could not connect to Unity on startup: %s", e, exc_info=True)
         _unity_connection = None
-        
+
         # Record connection failure (deferred)
         import threading as _t
         _err_msg = str(e)[:200]
@@ -125,7 +125,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
             }
         )).start()
     except Exception as e:
-        logger.warning("Unexpected error connecting to Unity on startup: %s", e)
+        logger.warning("Unexpected error connecting to Unity on startup: %s", e, exc_info=True)
         _unity_connection = None
         import threading as _t
         _err_msg = str(e)[:200]
@@ -137,7 +137,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
                 "connection_time_ms": (time.perf_counter() - start_clk) * 1000,
             }
         )).start()
-        
+
     try:
         # Yield the connection object so it can be attached to the context
         # The key 'bridge' matches how tools like read_console expect to access it (ctx.bridge)

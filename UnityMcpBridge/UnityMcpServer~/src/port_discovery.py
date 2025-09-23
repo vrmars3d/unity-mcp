@@ -26,16 +26,16 @@ class PortDiscovery:
     REGISTRY_FILE = "unity-mcp-port.json"  # legacy single-project file
     DEFAULT_PORT = 6400
     CONNECT_TIMEOUT = 0.3  # seconds, keep this snappy during discovery
-    
+
     @staticmethod
     def get_registry_path() -> Path:
         """Get the path to the port registry file"""
         return Path.home() / ".unity-mcp" / PortDiscovery.REGISTRY_FILE
-    
+
     @staticmethod
     def get_registry_dir() -> Path:
         return Path.home() / ".unity-mcp"
-    
+
     @staticmethod
     def list_candidate_files() -> List[Path]:
         """Return candidate registry files, newest first.
@@ -52,7 +52,7 @@ class PortDiscovery:
             # Put legacy at the end so hashed, per-project files win
             hashed.append(legacy)
         return hashed
-    
+
     @staticmethod
     def _try_probe_unity_mcp(port: int) -> bool:
         """Quickly check if a MCP for Unity listener is on this port.
@@ -88,14 +88,14 @@ class PortDiscovery:
                 return json.load(f)
         except Exception:
             return None
-    
+
     @staticmethod
     def discover_unity_port() -> int:
         """
         Discover Unity port by scanning per-project and legacy registry files.
         Prefer the newest file whose port responds; fall back to first parsed
         value; finally default to 6400.
-        
+
         Returns:
             Port number to connect to
         """
@@ -108,11 +108,13 @@ class PortDiscovery:
                 return port
 
         candidates = PortDiscovery.list_candidate_files()
+        logger.info(f"Looking for registry files in: {PortDiscovery.get_registry_dir()}")
 
         first_seen_port: Optional[int] = None
 
         for path in candidates:
             try:
+                logger.debug(f"Checking registry file: {path}")
                 with open(path, 'r') as f:
                     cfg = json.load(f)
                 unity_port = cfg.get('unity_port')
@@ -130,16 +132,16 @@ class PortDiscovery:
             return first_seen_port
 
         # Fallback to default port
-        logger.info(f"No port registry found; using default port {PortDiscovery.DEFAULT_PORT}")
+        logger.info(f"Registry files not found or unresponsive; falling back to default port {PortDiscovery.DEFAULT_PORT}")
         return PortDiscovery.DEFAULT_PORT
-    
+
     @staticmethod
     def get_port_config() -> Optional[dict]:
         """
         Get the most relevant port configuration from registry.
         Returns the most recent hashed file's config if present,
         otherwise the legacy file's config. Returns None if nothing exists.
-        
+
         Returns:
             Port configuration dict or None if not found
         """
