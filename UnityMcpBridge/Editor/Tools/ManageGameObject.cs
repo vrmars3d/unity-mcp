@@ -27,7 +27,7 @@ namespace MCPForUnity.Editor.Tools
             Converters = new List<JsonConverter>
             {
                 new Vector3Converter(),
-                new Vector2Converter(), 
+                new Vector2Converter(),
                 new QuaternionConverter(),
                 new ColorConverter(),
                 new RectConverter(),
@@ -35,7 +35,7 @@ namespace MCPForUnity.Editor.Tools
                 new UnityEngineObjectConverter()
             }
         });
-        
+
         // --- Main Handler ---
 
         public static object HandleCommand(JObject @params)
@@ -867,7 +867,7 @@ namespace MCPForUnity.Editor.Tools
             // return Response.Success(
             //     $"GameObject '{targetGo.name}' modified successfully.",
             //     GetGameObjectData(targetGo));
-            
+
         }
 
         private static object DeleteGameObject(JToken targetToken, string searchMethod)
@@ -947,26 +947,26 @@ namespace MCPForUnity.Editor.Tools
 
             try
             {
-                // --- Get components, immediately copy to list, and null original array --- 
+                // --- Get components, immediately copy to list, and null original array ---
                 Component[] originalComponents = targetGo.GetComponents<Component>();
                 List<Component> componentsToIterate = new List<Component>(originalComponents ?? Array.Empty<Component>()); // Copy immediately, handle null case
-                int componentCount = componentsToIterate.Count; 
+                int componentCount = componentsToIterate.Count;
                 originalComponents = null; // Null the original reference
                 // Debug.Log($"[GetComponentsFromTarget] Found {componentCount} components on {targetGo.name}. Copied to list, nulled original. Starting REVERSE for loop...");
-                // --- End Copy and Null --- 
-                
+                // --- End Copy and Null ---
+
                 var componentData = new List<object>();
-                
+
                 for (int i = componentCount - 1; i >= 0; i--) // Iterate backwards over the COPY
                 {
                     Component c = componentsToIterate[i]; // Use the copy
-                    if (c == null) 
+                    if (c == null)
                     {
                         // Debug.LogWarning($"[GetComponentsFromTarget REVERSE for] Encountered a null component at index {i} on {targetGo.name}. Skipping.");
                         continue; // Safety check
                     }
                     // Debug.Log($"[GetComponentsFromTarget REVERSE for] Processing component: {c.GetType()?.FullName ?? "null"} (ID: {c.GetInstanceID()}) at index {i} on {targetGo.name}");
-                    try 
+                    try
                     {
                         var data = Helpers.GameObjectSerializer.GetComponentData(c, includeNonPublicSerialized);
                         if (data != null) // Ensure GetComponentData didn't return null
@@ -990,7 +990,7 @@ namespace MCPForUnity.Editor.Tools
                     }
                 }
                 // Debug.Log($"[GetComponentsFromTarget] Finished REVERSE for loop.");
-                
+
                 // Cleanup the list we created
                 componentsToIterate.Clear();
                 componentsToIterate = null;
@@ -1189,7 +1189,7 @@ namespace MCPForUnity.Editor.Tools
         /// <summary>
         /// Finds a single GameObject based on token (ID, name, path) and search method.
         /// </summary>
-        private static GameObject FindObjectInternal(
+        public static GameObject FindObjectInternal(
             JToken targetToken,
             string searchMethod,
             JObject findParams = null
@@ -1212,6 +1212,18 @@ namespace MCPForUnity.Editor.Tools
                 findParams
             );
             return results.Count > 0 ? results[0] : null;
+        }
+
+        /// <summary>
+        /// Finds a single GameObject based on string target and search method.
+        /// Overload for easier use with string parameters.
+        /// </summary>
+        public static GameObject FindObjectInternal(string target, string searchMethod)
+        {
+            if (string.IsNullOrEmpty(target))
+                return null;
+
+            return FindObjectInternal(new JValue(target), searchMethod);
         }
 
         /// <summary>
@@ -2180,17 +2192,17 @@ namespace MCPForUnity.Editor.Tools
             {
                 return resolvedType;
             }
-            
+
             // Log the resolver error if type wasn't found
             if (!string.IsNullOrEmpty(error))
             {
                 Debug.LogWarning($"[FindType] {error}");
             }
-            
+
             return null;
         }
     }
-    
+
     /// <summary>
     /// Robust component resolver that avoids Assembly.LoadFrom and supports assembly definitions.
     /// Prioritizes runtime (Player) assemblies over Editor assemblies.
@@ -2369,7 +2381,7 @@ namespace MCPForUnity.Editor.Tools
                 // For now, we'll use a simple rule-based approach that mimics AI behavior
                 // This can be replaced with actual AI calls later
                 var suggestions = GetRuleBasedSuggestions(userInput, availableProperties);
-                
+
                 PropertySuggestionCache[cacheKey] = suggestions;
                 return suggestions;
             }
@@ -2394,7 +2406,7 @@ namespace MCPForUnity.Editor.Tools
             foreach (var property in availableProperties)
             {
                 var cleanedProperty = property.ToLowerInvariant().Replace(" ", "").Replace("-", "").Replace("_", "");
-                
+
                 // Exact match after cleaning
                 if (cleanedProperty == cleanedInput)
                 {

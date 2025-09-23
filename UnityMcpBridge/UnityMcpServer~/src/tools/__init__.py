@@ -9,6 +9,7 @@ from .manage_shader import register_manage_shader_tools
 from .read_console import register_read_console_tools
 from .manage_menu_item import register_manage_menu_item_tools
 from .resource_tools import register_resource_tools
+from .inspect_component import register_inspect_component_tools
 
 logger = logging.getLogger("mcp-for-unity-server")
 
@@ -26,4 +27,5 @@ def register_all_tools(mcp):
     register_read_console_tools(mcp)
     register_manage_menu_item_tools(mcp)
     register_resource_tools(mcp)
+    register_inspect_component_tools(mcp)
     logger.info("MCP for Unity Server tool registration complete.")
