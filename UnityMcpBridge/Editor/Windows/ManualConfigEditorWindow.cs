@@ -101,6 +101,20 @@ namespace MCPForUnity.Editor.Windows
                     instructionStyle
                 );
             }
+            else if (mcpClient?.mcpType == McpTypes.Codex)
+            {
+                EditorGUILayout.LabelField(
+                    "    a) Running `codex config edit` in a terminal",
+                    instructionStyle
+                );
+            }
+            else if (mcpClient?.mcpType == McpTypes.Trae)
+            {
+                EditorGUILayout.LabelField(
+                    "    a) Going to Settings > MCP > Add Server > Add Manually",
+                    instructionStyle
+                );
+            }
             EditorGUILayout.LabelField("    OR", instructionStyle);
             EditorGUILayout.LabelField(
                 "    b) Opening the configuration file at:",
@@ -201,10 +215,10 @@ namespace MCPForUnity.Editor.Windows
 
             EditorGUILayout.Space(10);
 
-            EditorGUILayout.LabelField(
-                "2. Paste the following JSON configuration:",
-                instructionStyle
-            );
+            string configLabel = mcpClient?.mcpType == McpTypes.Codex
+                ? "2. Paste the following TOML configuration:"
+                : "2. Paste the following JSON configuration:";
+            EditorGUILayout.LabelField(configLabel, instructionStyle);
 
             // JSON section with improved styling
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);

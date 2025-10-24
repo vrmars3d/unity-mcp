@@ -11,15 +11,15 @@ What changed and why:
   (quick socket connect + ping) before choosing it.
 """
 
+import glob
 import json
-import os
 import logging
 from pathlib import Path
-from typing import Optional, List
-import glob
 import socket
+from typing import Optional, List
 
 logger = logging.getLogger("mcp-for-unity-server")
+
 
 class PortDiscovery:
     """Handles port discovery from Unity Bridge registry"""
@@ -78,7 +78,8 @@ class PortDiscovery:
         try:
             base = PortDiscovery.get_registry_dir()
             status_files = sorted(
-                (Path(p) for p in glob.glob(str(base / "unity-mcp-status-*.json"))),
+                (Path(p)
+                 for p in glob.glob(str(base / "unity-mcp-status-*.json"))),
                 key=lambda p: p.stat().st_mtime,
                 reverse=True,
             )
@@ -122,13 +123,15 @@ class PortDiscovery:
                     if first_seen_port is None:
                         first_seen_port = unity_port
                     if PortDiscovery._try_probe_unity_mcp(unity_port):
-                        logger.info(f"Using Unity port from {path.name}: {unity_port}")
+                        logger.info(
+                            f"Using Unity port from {path.name}: {unity_port}")
                         return unity_port
             except Exception as e:
                 logger.warning(f"Could not read port registry {path}: {e}")
 
         if first_seen_port is not None:
-            logger.info(f"No responsive port found; using first seen value {first_seen_port}")
+            logger.info(
+                f"No responsive port found; using first seen value {first_seen_port}")
             return first_seen_port
 
         # Fallback to default port
@@ -153,5 +156,6 @@ class PortDiscovery:
                 with open(path, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                logger.warning(f"Could not read port configuration {path}: {e}")
+                logger.warning(
+                    f"Could not read port configuration {path}: {e}")
         return None

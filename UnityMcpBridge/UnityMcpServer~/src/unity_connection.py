@@ -1,17 +1,18 @@
+from config import config
 import contextlib
+from dataclasses import dataclass
 import errno
 import json
 import logging
+from pathlib import Path
+from port_discovery import PortDiscovery
 import random
 import socket
 import struct
 import threading
 import time
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Dict
-from config import config
-from port_discovery import PortDiscovery
+
 
 # Configure logging using settings from config
 logging.basicConfig(
@@ -25,6 +26,7 @@ _connection_lock = threading.Lock()
 
 # Maximum allowed framed payload size (64 MiB)
 FRAMED_MAX = 64 * 1024 * 1024
+
 
 @dataclass
 class UnityConnection:
@@ -50,11 +52,14 @@ class UnityConnection:
                 return True
             try:
                 # Bounded connect to avoid indefinite blocking
-                connect_timeout = float(getattr(config, "connect_timeout", getattr(config, "connection_timeout", 1.0)))
-                self.sock = socket.create_connection((self.host, self.port), connect_timeout)
+                connect_timeout = float(
+                    getattr(config, "connect_timeout", getattr(config, "connection_timeout", 1.0)))
+                self.sock = socket.create_connection(
+                    (self.host, self.port), connect_timeout)
                 # Disable Nagle's algorithm to reduce small RPC latency
                 with contextlib.suppress(Exception):
-                    self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    self.sock.setsockopt(
+                        socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 logger.debug(f"Connected to Unity at {self.host}:{self.port}")
 
                 # Strict handshake: require FRAMING=1
@@ -78,16 +83,20 @@ class UnityConnection:
 
                     if 'FRAMING=1' in text:
                         self.use_framing = True
-                        logger.debug('Unity MCP handshake received: FRAMING=1 (strict)')
+                        logger.debug(
+                            'Unity MCP handshake received: FRAMING=1 (strict)')
                     else:
                         if require_framing:
                             # Best-effort plain-text advisory for legacy peers
                             with contextlib.suppress(Exception):
-                                self.sock.sendall(b'Unity MCP requires FRAMING=1\n')
-                            raise ConnectionError(f'Unity MCP requires FRAMING=1, got: {text!r}')
+                                self.sock.sendall(
+                                    b'Unity MCP requires FRAMING=1\n')
+                            raise ConnectionError(
+                                f'Unity MCP requires FRAMING=1, got: {text!r}')
                         else:
                             self.use_framing = False
-                            logger.warning('Unity MCP handshake missing FRAMING=1; proceeding in legacy mode by configuration')
+                            logger.warning(
+                                'Unity MCP handshake missing FRAMING=1; proceeding in legacy mode by configuration')
                 finally:
                     self.sock.settimeout(config.connection_timeout)
                 return True
@@ -116,7 +125,8 @@ class UnityConnection:
         while len(data) < count:
             chunk = sock.recv(count - len(data))
             if not chunk:
-                raise ConnectionError("Connection closed before reading expected bytes")
+                raise ConnectionError(
+                    "Connection closed before reading expected bytes")
             data.extend(chunk)
         return bytes(data)
 
@@ -136,13 +146,16 @@ class UnityConnection:
                         heartbeat_count += 1
                         if heartbeat_count >= getattr(config, 'max_heartbeat_frames', 16) or time.monotonic() > deadline:
                             # Treat as empty successful response to match C# server behavior
-                            logger.debug("Heartbeat threshold reached; returning empty response")
+                            logger.debug(
+                                "Heartbeat threshold reached; returning empty response")
                             return b""
                         continue
                     if payload_len > FRAMED_MAX:
-                        raise ValueError(f"Invalid framed length: {payload_len}")
+                        raise ValueError(
+                            f"Invalid framed length: {payload_len}")
                     payload = self._read_exact(sock, payload_len)
-                    logger.debug(f"Received framed response ({len(payload)} bytes)")
+                    logger.debug(
+                        f"Received framed response ({len(payload)} bytes)")
                     return payload
             except socket.timeout as e:
                 logger.warning("Socket timeout during framed receive")
@@ -158,7 +171,8 @@ class UnityConnection:
                 chunk = sock.recv(buffer_size)
                 if not chunk:
                     if not chunks:
-                        raise Exception("Connection closed before receiving data")
+                        raise Exception(
+                            "Connection closed before receiving data")
                     break
                 chunks.append(chunk)
 
@@ -188,13 +202,15 @@ class UnityConnection:
                     json.loads(decoded_data)
 
                     # If we get here, we have valid JSON
-                    logger.info(f"Received complete response ({len(data)} bytes)")
+                    logger.info(
+                        f"Received complete response ({len(data)} bytes)")
                     return data
                 except json.JSONDecodeError:
                     # We haven't received a complete valid JSON response yet
                     continue
                 except Exception as e:
-                    logger.warning(f"Error processing response chunk: {str(e)}")
+                    logger.warning(
+                        f"Error processing response chunk: {str(e)}")
                     # Continue reading more chunks as this might not be the complete response
                     continue
         except socket.timeout:
@@ -217,7 +233,8 @@ class UnityConnection:
 
         def read_status_file() -> dict | None:
             try:
-                status_files = sorted(Path.home().joinpath('.unity-mcp').glob('unity-mcp-status-*.json'), key=lambda p: p.stat().st_mtime, reverse=True)
+                status_files = sorted(Path.home().joinpath(
+                    '.unity-mcp').glob('unity-mcp-status-*.json'), key=lambda p: p.stat().st_mtime, reverse=True)
                 if not status_files:
                     return None
                 latest = status_files[0]
@@ -253,7 +270,8 @@ class UnityConnection:
                     payload = b'ping'
                 else:
                     command = {"type": command_type, "params": params or {}}
-                    payload = json.dumps(command, ensure_ascii=False).encode('utf-8')
+                    payload = json.dumps(
+                        command, ensure_ascii=False).encode('utf-8')
 
                 # Send/receive are serialized to protect the shared socket
                 with self._io_lock:
@@ -280,7 +298,8 @@ class UnityConnection:
                     try:
                         response_data = self.receive_full_response(self.sock)
                         with contextlib.suppress(Exception):
-                            logger.debug("recv %d bytes; mode=%s", len(response_data), mode)
+                            logger.debug("recv %d bytes; mode=%s",
+                                         len(response_data), mode)
                     finally:
                         if restore_timeout is not None:
                             self.sock.settimeout(restore_timeout)
@@ -320,7 +339,8 @@ class UnityConnection:
                 try:
                     new_port = PortDiscovery.discover_unity_port()
                     if new_port != self.port:
-                        logger.info(f"Unity port changed {self.port} -> {new_port}")
+                        logger.info(
+                            f"Unity port changed {self.port} -> {new_port}")
                     self.port = new_port
                 except Exception as de:
                     logger.debug(f"Port discovery failed: {de}")
@@ -334,11 +354,13 @@ class UnityConnection:
                     jitter = random.uniform(0.1, 0.3)
 
                     # Fast‑retry for transient socket failures
-                    fast_error = isinstance(e, (ConnectionRefusedError, ConnectionResetError, TimeoutError))
+                    fast_error = isinstance(
+                        e, (ConnectionRefusedError, ConnectionResetError, TimeoutError))
                     if not fast_error:
                         try:
                             err_no = getattr(e, 'errno', None)
-                            fast_error = err_no in (errno.ECONNREFUSED, errno.ECONNRESET, errno.ETIMEDOUT)
+                            fast_error = err_no in (
+                                errno.ECONNREFUSED, errno.ECONNRESET, errno.ETIMEDOUT)
                         except Exception:
                             pass
 
@@ -355,8 +377,10 @@ class UnityConnection:
                     continue
                 raise
 
+
 # Global Unity connection
 _unity_connection = None
+
 
 def get_unity_connection() -> UnityConnection:
     """Retrieve or establish a persistent Unity connection.
@@ -376,7 +400,8 @@ def get_unity_connection() -> UnityConnection:
         _unity_connection = UnityConnection()
         if not _unity_connection.connect():
             _unity_connection = None
-            raise ConnectionError("Could not connect to Unity. Ensure the Unity Editor and MCP Bridge are running.")
+            raise ConnectionError(
+                "Could not connect to Unity. Ensure the Unity Editor and MCP Bridge are running.")
         logger.info("Connected to Unity on startup")
         return _unity_connection
 
@@ -410,7 +435,8 @@ def send_command_with_retry(command_type: str, params: Dict[str, Any], *, max_re
     response = conn.send_command(command_type, params)
     retries = 0
     while _is_reloading_response(response) and retries < max_retries:
-        delay_ms = int(response.get("retry_after_ms", retry_ms)) if isinstance(response, dict) else retry_ms
+        delay_ms = int(response.get("retry_after_ms", retry_ms)
+                       ) if isinstance(response, dict) else retry_ms
         time.sleep(max(0.0, delay_ms / 1000.0))
         retries += 1
         response = conn.send_command(command_type, params)
@@ -425,7 +451,8 @@ async def async_send_command_with_retry(command_type: str, params: Dict[str, Any
             loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
-            lambda: send_command_with_retry(command_type, params, max_retries=max_retries, retry_ms=retry_ms),
+            lambda: send_command_with_retry(
+                command_type, params, max_retries=max_retries, retry_ms=retry_ms),
         )
     except Exception as e:
         # Return a structured error dict for consistency with other responses

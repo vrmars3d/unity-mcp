@@ -12,7 +12,7 @@ on:
           - major
         default: patch
         required: true
-    
+
 jobs:
   bump:
     name: "Bump version and tag"
@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           BUMP="${{ inputs.version_bump }}"
-          CURRENT_VERSION=$(jq -r '.version' "UnityMcpBridge/package.json")
+          CURRENT_VERSION=$(jq -r '.version' "MCPForUnity/package.json")
           echo "Current version: $CURRENT_VERSION"
 
           IFS='.' read -r MA MI PA <<< "$CURRENT_VERSION"
@@ -63,12 +63,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Updating UnityMcpBridge/package.json to $NEW_VERSION"
-          jq ".version = \"${NEW_VERSION}\"" UnityMcpBridge/package.json > UnityMcpBridge/package.json.tmp
-          mv UnityMcpBridge/package.json.tmp UnityMcpBridge/package.json
+          echo "Updating MCPForUnity/package.json to $NEW_VERSION"
+          jq ".version = \"${NEW_VERSION}\"" MCPForUnity/package.json > MCPForUnity/package.json.tmp
+          mv MCPForUnity/package.json.tmp MCPForUnity/package.json
 
-          echo "Updating UnityMcpBridge/UnityMcpServer~/src/pyproject.toml to $NEW_VERSION"
-          sed -i '0,/^version = ".*"/s//version = "'"$NEW_VERSION"'"/' "UnityMcpBridge/UnityMcpServer~/src/pyproject.toml"
+          echo "Updating MCPForUnity/UnityMcpServer~/src/pyproject.toml to $NEW_VERSION"
+          sed -i '0,/^version = ".*"/s//version = "'"$NEW_VERSION"'"/' "MCPForUnity/UnityMcpServer~/src/pyproject.toml"
+
+          echo "Updating MCPForUnity/UnityMcpServer~/src/server_version.txt to $NEW_VERSION"
+          echo "$NEW_VERSION" > "MCPForUnity/UnityMcpServer~/src/server_version.txt"
 
       - name: Commit and push changes
         env:
@@ -78,7 +81,7 @@ jobs:
           set -euo pipefail
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add UnityMcpBridge/package.json "UnityMcpBridge/UnityMcpServer~/src/pyproject.toml"
+          git add MCPForUnity/package.json "MCPForUnity/UnityMcpServer~/src/pyproject.toml" "MCPForUnity/UnityMcpServer~/src/server_version.txt"
           if git diff --cached --quiet; then
             echo "No version changes to commit."
           else
@@ -105,3 +108,17 @@ jobs:
 
           git tag -a "$TAG" -m "Version ${NEW_VERSION}"
           git push origin "$TAG"
+
+      - name: Create GitHub release
+        env:
+          NEW_VERSION: ${{ steps.compute.outputs.new_version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v${NEW_VERSION}"
+
+          # Create release with auto-generated notes
+          gh release create "$TAG" \
+            --title "v${NEW_VERSION}" \
+            --generate-notes

@@ -19,6 +19,7 @@ namespace MCPForUnity.Editor.Tools
     /// <summary>
     /// Handles GameObject manipulation within the current scene (CRUD, find, components).
     /// </summary>
+    [McpForUnityTool("manage_gameobject")]
     public static class ManageGameObject
     {
         // Shared JsonSerializer to avoid per-call allocation overhead
@@ -155,6 +156,18 @@ namespace MCPForUnity.Editor.Tools
                             );
                         // Pass the includeNonPublicSerialized flag here
                         return GetComponentsFromTarget(getCompTarget, searchMethod, includeNonPublicSerialized);
+                    case "get_component":
+                        string getSingleCompTarget = targetToken?.ToString();
+                        if (getSingleCompTarget == null)
+                            return Response.Error(
+                                "'target' parameter required for get_component."
+                            );
+                        string componentName = @params["componentName"]?.ToString();
+                        if (string.IsNullOrEmpty(componentName))
+                            return Response.Error(
+                                "'componentName' parameter required for get_component."
+                            );
+                        return GetSingleComponentFromTarget(getSingleCompTarget, searchMethod, componentName, includeNonPublicSerialized);
                     case "add_component":
                         return AddComponentToTarget(@params, targetToken, searchMethod);
                     case "remove_component":
@@ -1008,6 +1021,70 @@ namespace MCPForUnity.Editor.Tools
             }
         }
 
+        private static object GetSingleComponentFromTarget(string target, string searchMethod, string componentName, bool includeNonPublicSerialized = true)
+        {
+            GameObject targetGo = FindObjectInternal(target, searchMethod);
+            if (targetGo == null)
+            {
+                return Response.Error(
+                    $"Target GameObject ('{target}') not found using method '{searchMethod ?? "default"}'."
+                );
+            }
+
+            try
+            {
+                // Try to find the component by name
+                Component targetComponent = targetGo.GetComponent(componentName);
+
+                // If not found directly, try to find by type name (handle namespaces)
+                if (targetComponent == null)
+                {
+                    Component[] allComponents = targetGo.GetComponents<Component>();
+                    foreach (Component comp in allComponents)
+                    {
+                        if (comp != null)
+                        {
+                            string typeName = comp.GetType().Name;
+                            string fullTypeName = comp.GetType().FullName;
+
+                            if (typeName == componentName || fullTypeName == componentName)
+                            {
+                                targetComponent = comp;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (targetComponent == null)
+                {
+                    return Response.Error(
+                        $"Component '{componentName}' not found on GameObject '{targetGo.name}'."
+                    );
+                }
+
+                var componentData = Helpers.GameObjectSerializer.GetComponentData(targetComponent, includeNonPublicSerialized);
+
+                if (componentData == null)
+                {
+                    return Response.Error(
+                        $"Failed to serialize component '{componentName}' on GameObject '{targetGo.name}'."
+                    );
+                }
+
+                return Response.Success(
+                    $"Retrieved component '{componentName}' from '{targetGo.name}'.",
+                    componentData
+                );
+            }
+            catch (Exception e)
+            {
+                return Response.Error(
+                    $"Error getting component '{componentName}' from '{targetGo.name}': {e.Message}"
+                );
+            }
+        }
+
         private static object AddComponentToTarget(
             JObject @params,
             JToken targetToken,
@@ -1105,7 +1182,7 @@ namespace MCPForUnity.Editor.Tools
                 return removeResult; // Return error
 
             EditorUtility.SetDirty(targetGo);
-             // Use the new serializer helper
+            // Use the new serializer helper
             return Response.Success(
                 $"Component '{typeName}' removed from '{targetGo.name}'.",
                 Helpers.GameObjectSerializer.GetGameObjectData(targetGo)
@@ -1154,7 +1231,7 @@ namespace MCPForUnity.Editor.Tools
                 return setResult; // Return error
 
             EditorUtility.SetDirty(targetGo);
-             // Use the new serializer helper
+            // Use the new serializer helper
             return Response.Success(
                 $"Properties set for component '{compName}' on '{targetGo.name}'.",
                 Helpers.GameObjectSerializer.GetGameObjectData(targetGo)
@@ -1629,8 +1706,8 @@ namespace MCPForUnity.Editor.Tools
             BindingFlags flags =
                 BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase;
 
-             // Use shared serializer to avoid per-call allocation
-             var inputSerializer = InputSerializer;
+            // Use shared serializer to avoid per-call allocation
+            var inputSerializer = InputSerializer;
 
             try
             {
@@ -1652,8 +1729,9 @@ namespace MCPForUnity.Editor.Tools
                         propInfo.SetValue(target, convertedValue);
                         return true;
                     }
-                    else {
-                         Debug.LogWarning($"[SetProperty] Conversion failed for property '{memberName}' (Type: {propInfo.PropertyType.Name}) from token: {value.ToString(Formatting.None)}");
+                    else
+                    {
+                        Debug.LogWarning($"[SetProperty] Conversion failed for property '{memberName}' (Type: {propInfo.PropertyType.Name}) from token: {value.ToString(Formatting.None)}");
                     }
                 }
                 else
@@ -1661,16 +1739,17 @@ namespace MCPForUnity.Editor.Tools
                     FieldInfo fieldInfo = type.GetField(memberName, flags);
                     if (fieldInfo != null) // Check if !IsLiteral?
                     {
-                         // Use the inputSerializer for conversion
+                        // Use the inputSerializer for conversion
                         object convertedValue = ConvertJTokenToType(value, fieldInfo.FieldType, inputSerializer);
-                         if (convertedValue != null || value.Type == JTokenType.Null) // Allow setting null
+                        if (convertedValue != null || value.Type == JTokenType.Null) // Allow setting null
                         {
                             fieldInfo.SetValue(target, convertedValue);
                             return true;
                         }
-                         else {
-                             Debug.LogWarning($"[SetProperty] Conversion failed for field '{memberName}' (Type: {fieldInfo.FieldType.Name}) from token: {value.ToString(Formatting.None)}");
-                         }
+                        else
+                        {
+                            Debug.LogWarning($"[SetProperty] Conversion failed for field '{memberName}' (Type: {fieldInfo.FieldType.Name}) from token: {value.ToString(Formatting.None)}");
+                        }
                     }
                     else
                     {
@@ -1817,12 +1896,17 @@ namespace MCPForUnity.Editor.Tools
                     if (value is JArray jArray)
                     {
                         // Try converting to known types that SetColor/SetVector accept
-                        if (jArray.Count == 4) {
+                        if (jArray.Count == 4)
+                        {
                             try { Color color = value.ToObject<Color>(inputSerializer); material.SetColor(finalPart, color); return true; } catch { }
                             try { Vector4 vec = value.ToObject<Vector4>(inputSerializer); material.SetVector(finalPart, vec); return true; } catch { }
-                        } else if (jArray.Count == 3) {
+                        }
+                        else if (jArray.Count == 3)
+                        {
                             try { Color color = value.ToObject<Color>(inputSerializer); material.SetColor(finalPart, color); return true; } catch { } // ToObject handles conversion to Color
-                        } else if (jArray.Count == 2) {
+                        }
+                        else if (jArray.Count == 2)
+                        {
                             try { Vector2 vec = value.ToObject<Vector2>(inputSerializer); material.SetVector(finalPart, vec); return true; } catch { }
                         }
                     }
@@ -1837,13 +1921,16 @@ namespace MCPForUnity.Editor.Tools
                     else if (value.Type == JTokenType.String)
                     {
                         // Try converting to Texture using the serializer/converter
-                        try {
+                        try
+                        {
                             Texture texture = value.ToObject<Texture>(inputSerializer);
-                            if (texture != null) {
+                            if (texture != null)
+                            {
                                 material.SetTexture(finalPart, texture);
                                 return true;
                             }
-                        } catch { }
+                        }
+                        catch { }
                     }
 
                     Debug.LogWarning(
@@ -1863,7 +1950,8 @@ namespace MCPForUnity.Editor.Tools
                         finalPropInfo.SetValue(currentObject, convertedValue);
                         return true;
                     }
-                    else {
+                    else
+                    {
                         Debug.LogWarning($"[SetNestedProperty] Final conversion failed for property '{finalPart}' (Type: {finalPropInfo.PropertyType.Name}) from token: {value.ToString(Formatting.None)}");
                     }
                 }
@@ -1879,7 +1967,8 @@ namespace MCPForUnity.Editor.Tools
                             finalFieldInfo.SetValue(currentObject, convertedValue);
                             return true;
                         }
-                        else {
+                        else
+                        {
                             Debug.LogWarning($"[SetNestedProperty] Final conversion failed for field '{finalPart}' (Type: {finalFieldInfo.FieldType.Name}) from token: {value.ToString(Formatting.None)}");
                         }
                     }
@@ -1961,25 +2050,25 @@ namespace MCPForUnity.Editor.Tools
             }
             catch (JsonSerializationException jsonEx)
             {
-                 Debug.LogError($"JSON Deserialization Error converting token to {targetType.FullName}: {jsonEx.Message}\nToken: {token.ToString(Formatting.None)}");
-                 // Optionally re-throw or return null/default
-                 // return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
-                 throw; // Re-throw to indicate failure higher up
+                Debug.LogError($"JSON Deserialization Error converting token to {targetType.FullName}: {jsonEx.Message}\nToken: {token.ToString(Formatting.None)}");
+                // Optionally re-throw or return null/default
+                // return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
+                throw; // Re-throw to indicate failure higher up
             }
             catch (ArgumentException argEx)
             {
                 Debug.LogError($"Argument Error converting token to {targetType.FullName}: {argEx.Message}\nToken: {token.ToString(Formatting.None)}");
-                 throw;
+                throw;
             }
             catch (Exception ex)
             {
-                 Debug.LogError($"Unexpected error converting token to {targetType.FullName}: {ex}\nToken: {token.ToString(Formatting.None)}");
-                 throw;
+                Debug.LogError($"Unexpected error converting token to {targetType.FullName}: {ex}\nToken: {token.ToString(Formatting.None)}");
+                throw;
             }
             // If ToObject succeeded, it would have returned. If it threw, we wouldn't reach here.
-             // This fallback logic is likely unreachable if ToObject covers all cases or throws on failure.
-             // Debug.LogWarning($"Conversion failed for token to {targetType.FullName}. Token: {token.ToString(Formatting.None)}");
-             // return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
+            // This fallback logic is likely unreachable if ToObject covers all cases or throws on failure.
+            // Debug.LogWarning($"Conversion failed for token to {targetType.FullName}. Token: {token.ToString(Formatting.None)}");
+            // return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
         }
 
         // --- ParseJTokenTo... helpers are likely redundant now with the serializer approach ---
@@ -1995,7 +2084,7 @@ namespace MCPForUnity.Editor.Tools
             }
             if (token is JArray arr && arr.Count >= 3)
             {
-                 return new Vector3(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>());
+                return new Vector3(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>());
             }
             Debug.LogWarning($"Could not parse JToken '{token}' as Vector3 using fallback. Returning Vector3.zero.");
             return Vector3.zero;
@@ -2004,13 +2093,13 @@ namespace MCPForUnity.Editor.Tools
         private static Vector2 ParseJTokenToVector2(JToken token)
         {
             // ... (implementation - likely replaced by Vector2Converter) ...
-             if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y"))
+            if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y"))
             {
                 return new Vector2(obj["x"].ToObject<float>(), obj["y"].ToObject<float>());
             }
             if (token is JArray arr && arr.Count >= 2)
             {
-                 return new Vector2(arr[0].ToObject<float>(), arr[1].ToObject<float>());
+                return new Vector2(arr[0].ToObject<float>(), arr[1].ToObject<float>());
             }
             Debug.LogWarning($"Could not parse JToken '{token}' as Vector2 using fallback. Returning Vector2.zero.");
             return Vector2.zero;
@@ -2024,47 +2113,47 @@ namespace MCPForUnity.Editor.Tools
             }
             if (token is JArray arr && arr.Count >= 4)
             {
-                 return new Quaternion(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
+                return new Quaternion(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
             }
             Debug.LogWarning($"Could not parse JToken '{token}' as Quaternion using fallback. Returning Quaternion.identity.");
             return Quaternion.identity;
         }
         private static Color ParseJTokenToColor(JToken token)
         {
-             // ... (implementation - likely replaced by ColorConverter) ...
+            // ... (implementation - likely replaced by ColorConverter) ...
             if (token is JObject obj && obj.ContainsKey("r") && obj.ContainsKey("g") && obj.ContainsKey("b") && obj.ContainsKey("a"))
             {
                 return new Color(obj["r"].ToObject<float>(), obj["g"].ToObject<float>(), obj["b"].ToObject<float>(), obj["a"].ToObject<float>());
             }
             if (token is JArray arr && arr.Count >= 4)
             {
-                 return new Color(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
+                return new Color(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
             }
             Debug.LogWarning($"Could not parse JToken '{token}' as Color using fallback. Returning Color.white.");
             return Color.white;
         }
         private static Rect ParseJTokenToRect(JToken token)
         {
-             // ... (implementation - likely replaced by RectConverter) ...
+            // ... (implementation - likely replaced by RectConverter) ...
             if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y") && obj.ContainsKey("width") && obj.ContainsKey("height"))
             {
                 return new Rect(obj["x"].ToObject<float>(), obj["y"].ToObject<float>(), obj["width"].ToObject<float>(), obj["height"].ToObject<float>());
             }
             if (token is JArray arr && arr.Count >= 4)
             {
-                 return new Rect(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
+                return new Rect(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
             }
             Debug.LogWarning($"Could not parse JToken '{token}' as Rect using fallback. Returning Rect.zero.");
             return Rect.zero;
         }
         private static Bounds ParseJTokenToBounds(JToken token)
         {
-             // ... (implementation - likely replaced by BoundsConverter) ...
+            // ... (implementation - likely replaced by BoundsConverter) ...
             if (token is JObject obj && obj.ContainsKey("center") && obj.ContainsKey("size"))
             {
                 // Requires Vector3 conversion, which should ideally use the serializer too
-                 Vector3 center = ParseJTokenToVector3(obj["center"]); // Or use obj["center"].ToObject<Vector3>(inputSerializer)
-                 Vector3 size = ParseJTokenToVector3(obj["size"]);     // Or use obj["size"].ToObject<Vector3>(inputSerializer)
+                Vector3 center = ParseJTokenToVector3(obj["center"]); // Or use obj["center"].ToObject<Vector3>(inputSerializer)
+                Vector3 size = ParseJTokenToVector3(obj["size"]);     // Or use obj["size"].ToObject<Vector3>(inputSerializer)
                 return new Bounds(center, size);
             }
             // Array fallback for Bounds is less intuitive, maybe remove?
@@ -2077,109 +2166,109 @@ namespace MCPForUnity.Editor.Tools
         }
         // --- End Redundant Parse Helpers ---
 
-         /// <summary>
-         /// Finds a specific UnityEngine.Object based on a find instruction JObject.
-         /// Primarily used by UnityEngineObjectConverter during deserialization.
-         /// </summary>
-         // Made public static so UnityEngineObjectConverter can call it. Moved from ConvertJTokenToType.
-         public static UnityEngine.Object FindObjectByInstruction(JObject instruction, Type targetType)
-         {
-             string findTerm = instruction["find"]?.ToString();
-             string method = instruction["method"]?.ToString()?.ToLower();
-             string componentName = instruction["component"]?.ToString(); // Specific component to get
+        /// <summary>
+        /// Finds a specific UnityEngine.Object based on a find instruction JObject.
+        /// Primarily used by UnityEngineObjectConverter during deserialization.
+        /// </summary>
+        // Made public static so UnityEngineObjectConverter can call it. Moved from ConvertJTokenToType.
+        public static UnityEngine.Object FindObjectByInstruction(JObject instruction, Type targetType)
+        {
+            string findTerm = instruction["find"]?.ToString();
+            string method = instruction["method"]?.ToString()?.ToLower();
+            string componentName = instruction["component"]?.ToString(); // Specific component to get
 
-             if (string.IsNullOrEmpty(findTerm))
-             {
-                 Debug.LogWarning("Find instruction missing 'find' term.");
-                 return null;
-             }
+            if (string.IsNullOrEmpty(findTerm))
+            {
+                Debug.LogWarning("Find instruction missing 'find' term.");
+                return null;
+            }
 
-             // Use a flexible default search method if none provided
-             string searchMethodToUse = string.IsNullOrEmpty(method) ? "by_id_or_name_or_path" : method;
+            // Use a flexible default search method if none provided
+            string searchMethodToUse = string.IsNullOrEmpty(method) ? "by_id_or_name_or_path" : method;
 
-             // If the target is an asset (Material, Texture, ScriptableObject etc.) try AssetDatabase first
-             if (typeof(Material).IsAssignableFrom(targetType) ||
-                 typeof(Texture).IsAssignableFrom(targetType) ||
-                 typeof(ScriptableObject).IsAssignableFrom(targetType) ||
-                 targetType.FullName.StartsWith("UnityEngine.U2D") || // Sprites etc.
-                 typeof(AudioClip).IsAssignableFrom(targetType) ||
-                 typeof(AnimationClip).IsAssignableFrom(targetType) ||
-                 typeof(Font).IsAssignableFrom(targetType) ||
-                 typeof(Shader).IsAssignableFrom(targetType) ||
-                 typeof(ComputeShader).IsAssignableFrom(targetType) ||
-                 typeof(GameObject).IsAssignableFrom(targetType) && findTerm.StartsWith("Assets/")) // Prefab check
-             {
+            // If the target is an asset (Material, Texture, ScriptableObject etc.) try AssetDatabase first
+            if (typeof(Material).IsAssignableFrom(targetType) ||
+                typeof(Texture).IsAssignableFrom(targetType) ||
+                typeof(ScriptableObject).IsAssignableFrom(targetType) ||
+                targetType.FullName.StartsWith("UnityEngine.U2D") || // Sprites etc.
+                typeof(AudioClip).IsAssignableFrom(targetType) ||
+                typeof(AnimationClip).IsAssignableFrom(targetType) ||
+                typeof(Font).IsAssignableFrom(targetType) ||
+                typeof(Shader).IsAssignableFrom(targetType) ||
+                typeof(ComputeShader).IsAssignableFrom(targetType) ||
+                typeof(GameObject).IsAssignableFrom(targetType) && findTerm.StartsWith("Assets/")) // Prefab check
+            {
                 // Try loading directly by path/GUID first
                 UnityEngine.Object asset = AssetDatabase.LoadAssetAtPath(findTerm, targetType);
-                 if (asset != null) return asset;
-                 asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(findTerm); // Try generic if type specific failed
-                 if (asset != null && targetType.IsAssignableFrom(asset.GetType())) return asset;
+                if (asset != null) return asset;
+                asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(findTerm); // Try generic if type specific failed
+                if (asset != null && targetType.IsAssignableFrom(asset.GetType())) return asset;
 
 
-                 // If direct path failed, try finding by name/type using FindAssets
-                 string searchFilter = $"t:{targetType.Name} {System.IO.Path.GetFileNameWithoutExtension(findTerm)}"; // Search by type and name
-                 string[] guids = AssetDatabase.FindAssets(searchFilter);
+                // If direct path failed, try finding by name/type using FindAssets
+                string searchFilter = $"t:{targetType.Name} {System.IO.Path.GetFileNameWithoutExtension(findTerm)}"; // Search by type and name
+                string[] guids = AssetDatabase.FindAssets(searchFilter);
 
-                 if (guids.Length == 1)
-                 {
-                     asset = AssetDatabase.LoadAssetAtPath(AssetDatabase.GUIDToAssetPath(guids[0]), targetType);
-                     if (asset != null) return asset;
-                 }
-                 else if (guids.Length > 1)
-                 {
-                     Debug.LogWarning($"[FindObjectByInstruction] Ambiguous asset find: Found {guids.Length} assets matching filter '{searchFilter}'. Provide a full path or unique name.");
-                     // Optionally return the first one? Or null? Returning null is safer.
-                     return null;
-                 }
-                 // If still not found, fall through to scene search (though unlikely for assets)
-             }
+                if (guids.Length == 1)
+                {
+                    asset = AssetDatabase.LoadAssetAtPath(AssetDatabase.GUIDToAssetPath(guids[0]), targetType);
+                    if (asset != null) return asset;
+                }
+                else if (guids.Length > 1)
+                {
+                    Debug.LogWarning($"[FindObjectByInstruction] Ambiguous asset find: Found {guids.Length} assets matching filter '{searchFilter}'. Provide a full path or unique name.");
+                    // Optionally return the first one? Or null? Returning null is safer.
+                    return null;
+                }
+                // If still not found, fall through to scene search (though unlikely for assets)
+            }
 
 
-             // --- Scene Object Search ---
-             // Find the GameObject using the internal finder
-             GameObject foundGo = FindObjectInternal(new JValue(findTerm), searchMethodToUse);
+            // --- Scene Object Search ---
+            // Find the GameObject using the internal finder
+            GameObject foundGo = FindObjectInternal(new JValue(findTerm), searchMethodToUse);
 
-             if (foundGo == null)
-             {
-                 // Don't warn yet, could still be an asset not found above
-                 // Debug.LogWarning($"Could not find GameObject using instruction: {instruction}");
-                 return null;
-             }
+            if (foundGo == null)
+            {
+                // Don't warn yet, could still be an asset not found above
+                // Debug.LogWarning($"Could not find GameObject using instruction: {instruction}");
+                return null;
+            }
 
-             // Now, get the target object/component from the found GameObject
-             if (targetType == typeof(GameObject))
-             {
-                 return foundGo; // We were looking for a GameObject
-             }
-             else if (typeof(Component).IsAssignableFrom(targetType))
-             {
-                 Type componentToGetType = targetType;
-                 if (!string.IsNullOrEmpty(componentName))
-                 {
-                     Type specificCompType = FindType(componentName);
-                     if (specificCompType != null && typeof(Component).IsAssignableFrom(specificCompType))
-                     {
-                         componentToGetType = specificCompType;
-                     }
-                     else
-                     {
-                         Debug.LogWarning($"Could not find component type '{componentName}' specified in find instruction. Falling back to target type '{targetType.Name}'.");
-                     }
-                 }
+            // Now, get the target object/component from the found GameObject
+            if (targetType == typeof(GameObject))
+            {
+                return foundGo; // We were looking for a GameObject
+            }
+            else if (typeof(Component).IsAssignableFrom(targetType))
+            {
+                Type componentToGetType = targetType;
+                if (!string.IsNullOrEmpty(componentName))
+                {
+                    Type specificCompType = FindType(componentName);
+                    if (specificCompType != null && typeof(Component).IsAssignableFrom(specificCompType))
+                    {
+                        componentToGetType = specificCompType;
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"Could not find component type '{componentName}' specified in find instruction. Falling back to target type '{targetType.Name}'.");
+                    }
+                }
 
-                 Component foundComp = foundGo.GetComponent(componentToGetType);
-                 if (foundComp == null)
-                 {
-                     Debug.LogWarning($"Found GameObject '{foundGo.name}' but could not find component of type '{componentToGetType.Name}'.");
-                 }
-                 return foundComp;
-             }
-             else
-             {
-                  Debug.LogWarning($"Find instruction handling not implemented for target type: {targetType.Name}");
-                  return null;
-             }
-         }
+                Component foundComp = foundGo.GetComponent(componentToGetType);
+                if (foundComp == null)
+                {
+                    Debug.LogWarning($"Found GameObject '{foundGo.name}' but could not find component of type '{componentToGetType.Name}'.");
+                }
+                return foundComp;
+            }
+            else
+            {
+                Debug.LogWarning($"Find instruction handling not implemented for target type: {targetType.Name}");
+                return null;
+            }
+        }
 
 
         /// <summary>
@@ -2469,4 +2558,3 @@ namespace MCPForUnity.Editor.Tools
         // They are now in Helpers.GameObjectSerializer
     }
 }
-

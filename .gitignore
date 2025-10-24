@@ -25,7 +25,6 @@ UnityMcpServer.meta
 # Unity Editor
 *.unitypackage
 *.asset
-UnityMcpBridge.meta
 LICENSE.meta
 CONTRIBUTING.md.meta
 
@@ -40,3 +39,5 @@ TestProjects/UnityMCPTests/Packages/packages-lock.json
 # Backup artifacts
 *.backup
 *.backup.meta
+
+.wt-origin-main/
