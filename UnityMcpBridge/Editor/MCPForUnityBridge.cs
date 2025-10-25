@@ -558,6 +558,9 @@ namespace MCPForUnity.Editor
                         }
                     }
                     catch { }
+                        try
+                        {
+
                     // Strict framing: always require FRAMING=1 and frame all I/O
                     try
                     {
